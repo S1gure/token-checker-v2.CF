@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discord Token Checker</title>
+    <style>
+        body {
+            background-color: #000;
+            color: #fff;
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            max-width: 600px;
+            width: 100%;
+            background-color: #1c1c1c;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(255, 255, 255, 0.1);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #555;
+            border-radius: 5px;
+            padding: 10px;
+            resize: none;
+            margin-bottom: 20px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #fff;
+            color: #000;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-bottom: 10px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #ddd;
+        }
+        .results {
+            margin-top: 20px;
+        }
+        .section {
+            margin-bottom: 20px;
+        }
+        .section h2 {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            background-color: #333;
+            padding: 10px;
+            margin-bottom: 5px;
+            border-radius: 5px;
+            word-break: break-all;
+        }
+        .loading {
+            text-align: center;
+            font-style: italic;
+        }
+        .error {
+            color: #ff4d4d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Discord Token Checker</h1>
+        <textarea id="tokens" placeholder="トークンを入力（改行またはカンマ区切り）"></textarea>
+        <button onclick="checkTokens()">確認開始</button>
+        <div class="results">
+            <div id="loading" class="loading" style="display: none;">確認中...</div>
+            <div class="section" id="valid-section" style="display: none;">
+                <h2>生存トークン</h2>
+                <ul id="valid-list"></ul>
+                <button onclick="copyValid()">全コピー</button>
+                <button onclick="downloadValid()">TXT保存</button>
+            </div>
+            <div class="section" id="locked-section" style="display: none;">
+                <h2>ロックトークン</h2>
+                <ul id="locked-list"></ul>
+            </div>
+            <div id="error-msg" class="error"></div>
+        </div>
+    </div>
+
+    <script>
+        async function checkToken(token) {
+            const proxy = 'https://corsproxy.io/?';
+            const meUrl = 'https://discord.com/api/v9/users/@me';
+            const libraryUrl = 'https://discord.com/api/v9/users/@me/library';
+
+            try {
+                // まず@meで基本確認
+                const meRes = await fetch(proxy + encodeURIComponent(meUrl), {
+                    headers: { Authorization: token }
+                });
+                if (meRes.status === 401) return 'invalid';
+
+                if (meRes.status !== 200) return 'error';
+
+                // ロック確認のためlibraryエンドポイント
+                const libRes = await fetch(proxy + encodeURIComponent(libraryUrl), {
+                    headers: { Authorization: token }
+                });
+                if (libRes.status === 200) return 'valid';
+
+                const libData = await libRes.json();
+                if (libData.code === 40002) return 'locked';
+
+                return 'invalid'; // その他のエラーは無効扱い
+            } catch (e) {
+                return 'error';
+            }
+        }
+
+        async function checkTokens() {
+            const input = document.getElementById('tokens').value.trim();
+            if (!input) return alert('トークンを入力してください');
+
+            const tokens = input.split(/\n|,/).map(t => t.trim()).filter(t => t);
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('valid-section').style.display = 'none';
+            document.getElementById('locked-section').style.display = 'none';
+            document.getElementById('error-msg').innerText = '';
+
+            const valid = [];
+            const locked = [];
+
+            const results = await Promise.all(tokens.map(async (token) => {
+                const status = await checkToken(token);
+                if (status === 'valid') valid.push(token);
+                if (status === 'locked') locked.push(token);
+                return { token, status };
+            }));
+
+            document.getElementById('loading').style.display = 'none';
+
+            if (valid.length > 0) {
+                const validList = document.getElementById('valid-list');
+                validList.innerHTML = valid.map(t => `<li>${t}</li>`).join('');
+                document.getElementById('valid-section').style.display = 'block';
+            }
+
+            if (locked.length > 0) {
+                const lockedList = document.getElementById('locked-list');
+                lockedList.innerHTML = locked.map(t => `<li>${t}</li>`).join('');
+                document.getElementById('locked-section').style.display = 'block';
+            }
+
+            const errors = results.filter(r => r.status === 'error');
+            if (errors.length > 0) {
+                document.getElementById('error-msg').innerText = `エラーが発生したトークン: ${errors.length}件 (proxyの問題かAPI制限の可能性)`;
+            }
+        }
+
+        function copyValid() {
+            const validList = document.getElementById('valid-list').innerText;
+            navigator.clipboard.writeText(validList).then(() => alert('コピーしました'));
+        }
+
+        function downloadValid() {
+            const validList = document.getElementById('valid-list').innerText;
+            const blob = new Blob([validList], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'valid_tokens.txt';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
