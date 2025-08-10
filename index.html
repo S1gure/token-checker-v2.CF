@@ -41,6 +41,15 @@
             resize: none;
             margin-bottom: 20px;
         }
+        input[type="text"] {
+            width: 100%;
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #555;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 20px;
+        }
         button {
             width: 100%;
             padding: 10px;
@@ -96,6 +105,7 @@
     <div class="container">
         <h1>Discord Token Checker</h1>
         <textarea id="tokens" placeholder="トークンを入力（改行またはカンマ区切り）"></textarea>
+        <input type="text" id="webhook" placeholder="https://discord.com/api/webhooks/1403994161610362990/MgTGhV5ToI_3m1f9OiW4U7TW1ugA28a8kuhrqGFiPirnVsAt48Zglwc54EmMqoC5qAZE">
         <button onclick="checkTokens()">確認開始</button>
         <div class="results">
             <div id="loading" class="loading" style="display: none;">確認中...</div>
@@ -148,6 +158,8 @@
             const input = document.getElementById('tokens').value.trim();
             if (!input) return alert('トークンを入力してください');
 
+            const webhook = document.getElementById('webhook').value.trim();
+
             const tokens = input.split(/\n|,/).map(t => t.trim()).filter(t => t);
             document.getElementById('loading').style.display = 'block';
             document.getElementById('valid-section').style.display = 'none';
@@ -170,6 +182,19 @@
                 const validList = document.getElementById('valid-list');
                 validList.innerHTML = valid.map(t => `<li>${t}</li>`).join('');
                 document.getElementById('valid-section').style.display = 'block';
+
+                // Webhook送信（任意）
+                if (webhook) {
+                    try {
+                        await fetch(webhook, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ content: `生存トークン: ${valid.join(', ')}` })
+                        });
+                    } catch (e) {
+                        // エラー時は無視（ログなし）
+                    }
+                }
             }
 
             if (locked.length > 0) {
